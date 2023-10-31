@@ -180,26 +180,27 @@ void assemble(void) { // assemble parsed symbols into bytecode
 	int index = 0;
 	
 	for(int i = 0; i < sizeof(symbols) / sizeof(symbols[0]); i++) {
-		if(strcmp(symbols[i].name, "") == 0)
+		struct symbol *cur = &(symbols[i]);
+		if(strcmp(cur->name, "") == 0)
 			break;
 		
 		char arg0[2] = {};
 		char arg1[2] = {};
 		
-		arg0[0] = (symbols[i].args[0] & 0xff00) >> 8;
-		arg0[1] = (symbols[i].args[0] & 0x00ff);
-		arg1[0] = (symbols[i].args[1] & 0xff00) >> 8;
-		arg1[1] = (symbols[i].args[1] & 0x00ff);
+		arg0[0] = (cur->args[0] & 0xff00) >> 8;
+		arg0[1] = (cur->args[0] & 0x00ff);
+		arg1[0] = (cur->args[1] & 0xff00) >> 8;
+		arg1[1] = (cur->args[1] & 0x00ff);
 		
-		byteCode[index] = symbols[i].opcode;
-		if(symbols[i].opcode != 0x19) {
-			if(symbols[i].argc == 2) {
+		byteCode[index] = cur->opcode;
+		if(cur->opcode != 0x19) {
+			if(cur->argc == 2) {
 				byteCode[index + 1] = arg0[0];
 				byteCode[index + 2] = arg0[1];
 				byteCode[index + 3] = arg1[0];
 				byteCode[index + 4] = arg1[1];
 				index += 4;
-			} else if(symbols[i].argc == 1) {
+			} else if(cur->argc == 1) {
 				byteCode[index + 1] = arg0[0];
 				byteCode[index + 2] = arg0[1];
 				index += 2;
@@ -207,10 +208,10 @@ void assemble(void) { // assemble parsed symbols into bytecode
 			index++;
 		} else {
 			for(int j = 0; j < LBLSZ; j++) {
-				if((unsigned)(symbols[i].def[j]) == 0x00)
+				if((unsigned)(cur->def[j]) == 0x00)
 					break;
 				
-				byteCode[index + 1] = symbols[i].def[j];
+				byteCode[index + 1] = cur->def[j];
 				index += 1;
 			}
 			byteCode[index + 1] = (unsigned) 0xFF;
@@ -229,15 +230,16 @@ void secondPass(void) { // parse arguments into bytecode and save into symbols a
 			continue;
 		}
 		
-		if(strcmp(symbols[line].name, "def") == 0) { // def already cached, ignore it
+		struct symbol *cur = &(symbols[line]); // the current symbol being operated on
+
+		if(strcmp(cur->name, "def") == 0) { // def already cached, ignore it
 			line++;
 			continue;
 		}
 		
 		// scan argument(s) of symbol[line]
-		struct symbol curSymbol = symbols[line];
-		
-		int count = curSymbol.argc;
+				
+		int count = cur->argc;
 		int curArg = 0;
 		while(count > 0) {
 			char *space = strchr(ln, ' ');
@@ -278,7 +280,7 @@ void secondPass(void) { // parse arguments into bytecode and save into symbols a
 				}
 				
 				// place numerical register identifiers inside symbol arg list
-				symbols[line].args[curArg] = regIndex;
+				cur->args[curArg] = regIndex;
 				curArg++;
 			} else {
 				// pull the number from the line
@@ -398,7 +400,7 @@ void firstPass(void) {
 			}
 			buf[strlen(buf)] = 0x0;
 			
-			struct var variable = {0};
+			struct var variable = {0}; // cache the variable information
 			variable.line = line;
 			variable.addr = var_ptr;
 			strcpy(variable.name, var);
@@ -406,14 +408,14 @@ void firstPass(void) {
 			vars[varsIndex] = variable;
 			varsIndex++;
 			
-			struct symbol sym = {0};
+			struct symbol sym = {0}; // cache the variable's defined information
 			strcpy(sym.name, "def");
 			sym.argc = 1;
 			sym.len = 2;
 			sym.opcode = 0x19;
 			mem_ptr += 2;
 			
-			if(*buf == '"') {
+			if(*buf == '"') { // check for string based definition
 				for(int i = 1; i < strlen(buf) + 1; i++) {
 					if(buf[i] == '"')
 						break;
@@ -422,7 +424,7 @@ void firstPass(void) {
 					var_ptr += 1;
 					mem_ptr += 1;
 				}
-			} else {
+			} else { // not string based definition
 				if(isdigit(*buf)) {
 					short digit = (short) strtol(buf, NULL, 10);
 					sym.def[0] = digit;
@@ -447,7 +449,7 @@ void firstPass(void) {
 			
 			labels[labelsIndex] = newLabel;
 			labelsIndex ++;
-		} else {
+		} else { // 
 			int modMemPtr = 0;
 			struct symbol ret = getInstruction(ln, &modMemPtr);
 			
@@ -462,7 +464,7 @@ void firstPass(void) {
 	}
 }
 
-struct symbol getInstruction(char *ln, int *modMemPtr) {
+struct symbol getInstruction(char *ln, int *modMemPtr) { // return instruction data in the form of a struct
 	struct symbol ret = {0};
 	
 	char buffer[4];
@@ -482,14 +484,19 @@ struct symbol getInstruction(char *ln, int *modMemPtr) {
 				++(*modMemPtr);
 			}
 			
-			(*modMemPtr) = ((ins[i].len - ins[i].argc) + (ins[i].argc * 2));
+			(*modMemPtr) = ((ins[i].len - ins[i].argc) + (ins[i].argc * 2)); 
+			/* ^ calculate mem_ptr modifier: (L - C) + (C * 2)
+				L = Length of operation in bytes
+				C = Arg count of the operation
+			*/ 
+			
 			
 			strcpy(ret.name, buffer);
 			ret.argc = ins[i].argc;
 			ret.len = ins[i].len;
 			ret.opcode = ins[i].opcode;
 			ret.args[0] = 0;
-			ret.args[1] = 0;
+			ret.args[1] = 0; // cache return data
 			
 			break;
 		}
